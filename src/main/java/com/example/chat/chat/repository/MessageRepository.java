@@ -6,5 +6,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
-    Page<Message> findByChatIdOrderByTimestampDesc(Long chatId, Pageable pageable);
+    // Spring Data JPA uses the Pageable sort order automatically
+    Page<Message> findByChatId(Long chatId, Pageable pageable);
 }

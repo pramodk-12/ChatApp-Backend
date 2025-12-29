@@ -113,15 +113,6 @@ public class ChatService {
         return chats.stream().map(this::toChatDTO).collect(Collectors.toList());
     }
 
-    public Page<MessageDTO> getMessages(Long chatId, int page, int size) {
-        Pageable p = PageRequest.of(page, size);
-        Page<Message> messages = messageRepo.findByChatIdOrderByTimestampDesc(chatId, p);
-        return messages.map(m -> new MessageDTO(
-                m.getId(), m.getChatId(), m.getSenderId(), m.getContent(),
-                m.getMediaUrl(), m.getStatus(), m.getTimestamp()
-        ));
-    }
-
     @Transactional
     public void addMember(Long chatId, AddMemberDTO dto) {
         User me = getCurrentUser();
@@ -171,6 +162,7 @@ public class ChatService {
                 .content(dto.getContent())
                 .mediaUrl(dto.getMediaUrl())
                 .status("SENT") // Initial status is always SENT
+                .isDeleted(false)
                 .timestamp(Instant.now())
                 .build();
 
@@ -188,14 +180,44 @@ public class ChatService {
     }
 
     private MessageDTO mapToDTO(Message m) {
-        return new MessageDTO(
-                m.getId(),
-                m.getChatId(),
-                m.getSenderId(),
-                m.getContent(),
-                m.getMediaUrl(),
-                m.getStatus(),
-                m.getTimestamp()
-        );
+        // Look up the username based on the senderId
+        String senderName = userRepository.findById(m.getSenderId())
+                .map(User::getUsername)
+                .orElse("Unknown User");
+
+        return MessageDTO.builder()
+                .id(m.getId())
+                .chatId(m.getChatId())
+                .senderId(m.getSenderId())
+                .senderName(senderName) // 👈 This is the missing piece
+                .content(m.getContent())
+                .mediaUrl(m.getMediaUrl())
+                .status(m.getStatus())
+                .isDeleted(m.isDeleted())
+                .timestamp(m.getTimestamp())
+                .build();
+    }
+
+    @Transactional
+    public void deleteMessage(Long messageId) {
+        // 1. Find the message
+        Message message = messageRepo.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        // 2. Security Check: Get current authenticated user
+        User currentUser = getCurrentUser(); // Uses the helper method already in your service
+
+        // 3. Validation: Only the sender can delete their own message
+        if (!message.getSenderId().equals(currentUser.getId())) {
+            throw new RuntimeException("You are not authorized to delete this message");
+        }
+
+        // 4. Perform Soft Delete
+        message.setContent("This message was deleted");
+        message.setDeleted(true);
+        message.setStatus("DELETED");
+
+        // 5. Save the updated message
+        messageRepo.save(message);
     }
 }

@@ -25,6 +25,9 @@ public class Message {
 
     private String mediaUrl;
 
+    @Builder.Default
+    private boolean isDeleted = false;
+
     private String status; // SENT / DELIVERED / READ
 
     private Instant timestamp;

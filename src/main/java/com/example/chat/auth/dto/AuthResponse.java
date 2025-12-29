@@ -2,7 +2,12 @@ package com.example.chat.auth.dto;
 
 import lombok.*;
 
-@Getter @Setter @AllArgsConstructor
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class AuthResponse {
     private String token;
+    private Long id;           // Added
+    private String username;    // Added
+    private String displayName; // Added
 }

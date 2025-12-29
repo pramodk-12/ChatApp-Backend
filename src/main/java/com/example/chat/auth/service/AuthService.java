@@ -20,7 +20,6 @@ public class AuthService {
     private final PasswordEncoder encoder;
 
     public AuthResponse login(LoginRequest request) {
-        // Use a generic error for security
         User user = repository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("Invalid username or password"));
 
@@ -28,12 +27,13 @@ public class AuthService {
             throw new RuntimeException("Invalid username or password");
 
         String token = jwtService.generateToken(user.getUsername());
-        return new AuthResponse(token);
+
+        // Return the full user context
+        return new AuthResponse(token, user.getId(), user.getUsername(), user.getDisplayName());
     }
 
-    @Transactional // Ensures database consistency
+    @Transactional
     public AuthResponse register(SignupRequest request) {
-
         if (repository.findByUsername(request.getUsername()).isPresent())
             throw new RuntimeException("Username already taken");
 
@@ -41,14 +41,11 @@ public class AuthService {
                 .username(request.getUsername())
                 .password(encoder.encode(request.getPassword()))
                 .displayName(request.getDisplayName())
-                .avatarUrl(null)
                 .build();
 
-        // Save and capture the returned entity (which now contains the DB-generated ID)
         User savedUser = repository.save(user);
-
-        // If you decide to add ID to your JWT later, you'd use savedUser.getId() here
         String token = jwtService.generateToken(savedUser.getUsername());
-        return new AuthResponse(token);
+
+        return new AuthResponse(token, savedUser.getId(), savedUser.getUsername(), savedUser.getDisplayName());
     }
 }
