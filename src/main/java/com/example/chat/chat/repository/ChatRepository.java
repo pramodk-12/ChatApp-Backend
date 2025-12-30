@@ -9,12 +9,11 @@ import java.util.List;
 
 public interface ChatRepository extends JpaRepository<Chat, Long> {
 
-    // 1. Fixed the path and used the mapped 'members' relationship
     @Query("SELECT c FROM Chat c JOIN c.members m WHERE m.userId = :userId " +
             "ORDER BY c.lastMessageTimestamp DESC, c.createdAt DESC")
     List<Chat> findByMemberUserId(@Param("userId") Long userId);
 
-    // 2. FIXED: Changed :user to :userB to match the @Param name
+    // Renamed for clarity and updated to 'DIRECT' type
     @Query("""
         SELECT c FROM Chat c
         JOIN c.members m1

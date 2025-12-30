@@ -11,7 +11,6 @@ import com.example.chat.chat.repository.ChatMemberRepository;
 import com.example.chat.chat.repository.ChatRepository;
 import com.example.chat.chat.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -198,26 +197,44 @@ public class ChatService {
                 .build();
     }
 
+
     @Transactional
-    public void deleteMessage(Long messageId) {
-        // 1. Find the message
-        Message message = messageRepo.findById(messageId)
-                .orElseThrow(() -> new RuntimeException("Message not found"));
+    public ChatDTO getOrCreatePrivateChat(Long targetUserId) {
+        User me = getCurrentUser();
 
-        // 2. Security Check: Get current authenticated user
-        User currentUser = getCurrentUser(); // Uses the helper method already in your service
+        // 1. Try to find an existing 1-on-1
+        List<Chat> existing = chatRepo.findPrivateChatBetween(me.getId(), targetUserId);
 
-        // 3. Validation: Only the sender can delete their own message
-        if (!message.getSenderId().equals(currentUser.getId())) {
-            throw new RuntimeException("You are not authorized to delete this message");
+        if (!existing.isEmpty()) {
+            return toChatDTO(existing.get(0));
         }
 
-        // 4. Perform Soft Delete
-        message.setContent("This message was deleted");
-        message.setDeleted(true);
-        message.setStatus("DELETED");
+        // 2. If it doesn't exist, create a new 'DIRECT' chat
+        Chat chat = Chat.builder()
+                .type("DIRECT")
+                .name("Direct Message")
+                .createdBy(me.getId())
+                .createdAt(Instant.now())
+                .build();
 
-        // 5. Save the updated message
-        messageRepo.save(message);
+        Chat saved = chatRepo.save(chat);
+
+        // 3. Add both users as members
+        saveMember(saved.getId(), me.getId(), "MEMBER");
+        saveMember(saved.getId(), targetUserId, "MEMBER");
+
+        return toChatDTO(saved);
     }
+
+    // Helper method to keep code clean
+    private void saveMember(Long chatId, Long userId, String role) {
+        ChatMember member = ChatMember.builder()
+                .chatId(chatId)
+                .userId(userId)
+                .role(role)
+                .build();
+        memberRepo.save(member);
+    }
+
+
 }

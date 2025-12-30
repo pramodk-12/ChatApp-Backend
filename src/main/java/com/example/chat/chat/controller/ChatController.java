@@ -2,16 +2,14 @@ package com.example.chat.chat.controller;
 
 import com.example.chat.chat.dto.*;
 import com.example.chat.chat.service.ChatService;
+import com.example.chat.chat.service.MessageService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/chats")
@@ -19,6 +17,7 @@ import java.util.Map;
 public class ChatController {
 
     private final ChatService chatService;
+    private final MessageService messageService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @PostMapping("")
@@ -37,16 +36,25 @@ public class ChatController {
         chatService.addMember(chatId, dto);
     }
 
+    @PostMapping("/private/{targetUserId}")
+    public ResponseEntity<ChatDTO> startPrivateChat(@PathVariable Long targetUserId) {
+        ChatDTO chat = chatService.getOrCreatePrivateChat(targetUserId);
+        return ResponseEntity.ok(chat);
+    }
+
+
     @DeleteMapping("/{chatId}/messages/{messageId}")
     public ResponseEntity<Void> deleteMessage(
             @PathVariable Long chatId,
             @PathVariable Long messageId
     ) {
-        chatService.deleteMessage(messageId);
+        messageService.deleteMessage(messageId);
 
         ChatEventDTO event = new ChatEventDTO("DELETE_MESSAGE", messageId);
         messagingTemplate.convertAndSend("/topic/chats/" + chatId, event);
 
         return ResponseEntity.noContent().build();
     }
+
+
 }

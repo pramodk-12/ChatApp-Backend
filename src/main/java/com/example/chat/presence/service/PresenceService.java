@@ -1,6 +1,5 @@
 package com.example.chat.presence.service;
 
-import com.example.chat.auth.models.User;
 import com.example.chat.auth.repositories.UserRepository;
 import com.example.chat.presence.dto.UserPresenceDTO;
 import lombok.RequiredArgsConstructor;
