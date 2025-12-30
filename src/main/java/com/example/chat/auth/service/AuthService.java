@@ -5,7 +5,6 @@ import com.example.chat.auth.dto.LoginRequest;
 import com.example.chat.auth.dto.SignupRequest;
 import com.example.chat.auth.models.User;
 import com.example.chat.auth.repositories.UserRepository;
-import com.example.chat.auth.service.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -28,8 +27,14 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getUsername());
 
-        // Return the full user context
-        return new AuthResponse(token, user.getId(), user.getUsername(), user.getDisplayName());
+        // 🟢 Return the full user context including avatarUrl
+        return new AuthResponse(
+                token,
+                user.getId(),
+                user.getUsername(),
+                user.getDisplayName(),
+                user.getAvatarUrl()
+        );
     }
 
     @Transactional
@@ -37,15 +42,24 @@ public class AuthService {
         if (repository.findByUsername(request.getUsername()).isPresent())
             throw new RuntimeException("Username already taken");
 
+        // 🟢 Build the user. Even if avatarUrl is null from frontend,
+        // it is good practice to map it here for future proofing.
         User user = User.builder()
                 .username(request.getUsername())
                 .password(encoder.encode(request.getPassword()))
                 .displayName(request.getDisplayName())
+                .avatarUrl(request.getAvatarUrl()) // Map from request
                 .build();
 
         User savedUser = repository.save(user);
         String token = jwtService.generateToken(savedUser.getUsername());
 
-        return new AuthResponse(token, savedUser.getId(), savedUser.getUsername(), savedUser.getDisplayName());
+        return new AuthResponse(
+                token,
+                savedUser.getId(),
+                savedUser.getUsername(),
+                savedUser.getDisplayName(),
+                savedUser.getAvatarUrl() // Pass back to frontend
+        );
     }
 }

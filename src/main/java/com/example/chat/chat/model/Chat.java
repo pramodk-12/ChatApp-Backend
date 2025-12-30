@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Set;
 
 @Entity
@@ -23,9 +24,8 @@ public class Chat {
 
     private Instant createdAt;
 
-    @OneToMany(mappedBy = "chat")
-    private Set<ChatMember> members;
-
+    @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL)
+    private Set<ChatMember> members = new HashSet<>();
     // optional: last message preview fields for fast query
     private Long lastMessageId;
     private Long lastMessageTimestamp;
