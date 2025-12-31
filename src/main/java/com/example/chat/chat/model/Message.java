@@ -28,8 +28,10 @@ public class Message {
     @Builder.Default
     private boolean isDeleted = false;
 
-    private String status; // SENT / DELIVERED / READ
+    @Enumerated(EnumType.STRING)
+    private MessageStatus status = MessageStatus.SENT; // SENT / DELIVERED / READ
 
     private Instant timestamp;
 }
+
 

@@ -61,5 +61,11 @@ public class ChatController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{chatId}/read")
+    public ResponseEntity<Void> markAsRead(@PathVariable Long chatId) {
+        chatService.markMessagesAsRead(chatId);
+        return ResponseEntity.ok().build();
+    }
+
 
 }

@@ -7,11 +7,13 @@ import com.example.chat.chat.dto.*;
 import com.example.chat.chat.model.Chat;
 import com.example.chat.chat.model.ChatMember;
 import com.example.chat.chat.model.Message;
+import com.example.chat.chat.model.MessageStatus;
 import com.example.chat.chat.repository.ChatMemberRepository;
 import com.example.chat.chat.repository.ChatRepository;
 import com.example.chat.chat.repository.MessageRepository;
 import com.example.chat.friendship.service.FriendshipService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,7 @@ public class ChatService {
     private final MessageRepository messageRepo;
     private final UserRepository userRepository; // from auth module
     private final FriendshipService friendshipService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     private User getCurrentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -87,6 +90,7 @@ public class ChatService {
     public ChatDTO toChatDTO(Chat chat) {
         User me = getCurrentUser();
         String displayName = chat.getName();
+        String avatarUrl = null;
         boolean readOnly = false;
 
         // 1. Safe Member Mapping (Fixes the NullPointerException)
@@ -113,10 +117,12 @@ public class ChatService {
                         .orElse(null);
 
                 if (otherUserId != null) {
-                    userRepository.findById(otherUserId).ifPresent(u -> {
-                        // Update display name and check friendship
-                    });
-
+                    Optional<User> otherUserOpt = userRepository.findById(otherUserId);
+                    User otherUser = otherUserOpt.get();
+                    displayName = (otherUser.getDisplayName() != null && !otherUser.getDisplayName().isEmpty())
+                            ? otherUser.getDisplayName()
+                            : otherUser.getUsername();
+                    avatarUrl = otherUser.getAvatarUrl();
                     // Set readOnly if friendship is broken
                     if (!friendshipService.areFriends(me.getId(), otherUserId)) {
                         readOnly = true;
@@ -129,6 +135,7 @@ public class ChatService {
                 .id(chat.getId())
                 .type(chat.getType())
                 .name(displayName)
+                .avatarUrl(avatarUrl)
                 .isReadOnly(readOnly)
                 .createdAt(chat.getCreatedAt())
                 .createdBy(chat.getCreatedBy())
@@ -193,7 +200,7 @@ public class ChatService {
                 .senderId(currentUser.getId()) // Use authenticated ID, not DTO ID
                 .content(dto.getContent())
                 .mediaUrl(dto.getMediaUrl())
-                .status("SENT") // Initial status is always SENT
+                .status(MessageStatus.SENT) // Initial status is always SENT
                 .isDeleted(false)
                 .timestamp(Instant.now())
                 .build();
@@ -221,7 +228,7 @@ public class ChatService {
                 .id(m.getId())
                 .chatId(m.getChatId())
                 .senderId(m.getSenderId())
-                .senderName(senderName) // 👈 This is the missing piece
+                .senderName(senderName)
                 .content(m.getContent())
                 .mediaUrl(m.getMediaUrl())
                 .status(m.getStatus())
@@ -259,6 +266,28 @@ public class ChatService {
 
         // No re-fetch needed! toChatDTO will now see the members in 'saved'
         return toChatDTO(saved);
+    }
+
+    @Transactional
+    public void markMessagesAsRead(Long chatId) {
+        User me = getCurrentUser();
+
+        // 1. Update all messages in this chat sent by others to 'READ'
+        List<Message> unreadMessages = messageRepo.findByChatIdAndSenderIdNotAndStatusNot(
+                chatId, me.getId(), MessageStatus.READ
+        );
+
+        for (Message msg : unreadMessages) {
+            msg.setStatus(MessageStatus.READ);
+        }
+
+        messageRepo.saveAll(unreadMessages);
+
+        // 2. 🟢 CRITICAL: Notify the SENDER via WebSocket so their ticks turn blue
+        // For each message, we could send a status update event
+        System.out.println("Check... READ Messages" + chatId.toString());
+        messagingTemplate.convertAndSend("/topic/chats/" + chatId + "/status",
+                new StatusUpdateDTO(chatId, me.getId(), MessageStatus.READ));
     }
 
     @Transactional

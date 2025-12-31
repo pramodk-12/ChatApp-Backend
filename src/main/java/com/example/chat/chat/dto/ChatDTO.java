@@ -10,6 +10,7 @@ public class ChatDTO {
     private Long id;
     private String type;
     private boolean isReadOnly;
+    private String avatarUrl;
     private String name;
     private Long createdBy;
     private Instant createdAt;
