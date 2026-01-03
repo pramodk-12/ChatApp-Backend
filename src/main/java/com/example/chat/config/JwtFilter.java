@@ -71,7 +71,23 @@ public class JwtFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (Exception e) {
+        }
+        catch (io.jsonwebtoken.ExpiredJwtException e) {
+            logger.error("JWT Token expired: " + e.getMessage());
+            // 1. Set the attribute for the EntryPoint to read
+            request.setAttribute("expired", "Token has expired. Please log in again.");
+
+            // 2. Instead of just return, send the error explicitly
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token expired");
+            return;
+        }
+        catch (io.jsonwebtoken.security.SignatureException | io.jsonwebtoken.MalformedJwtException e) {
+            logger.error("Invalid JWT: " + e.getMessage());
+            request.setAttribute("expired", "Invalid token session.");
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
+            return;
+        }
+        catch (Exception e) {
             // Log the error (e.g., token expired, malformed, or signature invalid)
             // We do not throw an exception here so that the filter chain can finish.
             // This will result in a 403 Forbidden for protected routes.

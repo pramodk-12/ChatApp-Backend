@@ -10,4 +10,5 @@ public class AuthResponse {
     private Long id;           // Added
     private String username;    // Added
     private String displayName; // Added
+    private String avatarUrl;
 }

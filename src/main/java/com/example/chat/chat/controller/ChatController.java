@@ -42,6 +42,11 @@ public class ChatController {
         return ResponseEntity.ok(chat);
     }
 
+    @PostMapping("/group")
+    public ResponseEntity<ChatDTO> createGroup(@RequestBody CreateGroupRequest request) {
+        return ResponseEntity.ok(chatService.createGroupChat(request));
+    }
+
 
     @DeleteMapping("/{chatId}/messages/{messageId}")
     public ResponseEntity<Void> deleteMessage(
@@ -54,6 +59,12 @@ public class ChatController {
         messagingTemplate.convertAndSend("/topic/chats/" + chatId, event);
 
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{chatId}/read")
+    public ResponseEntity<Void> markAsRead(@PathVariable Long chatId) {
+        chatService.markMessagesAsRead(chatId);
+        return ResponseEntity.ok().build();
     }
 
 

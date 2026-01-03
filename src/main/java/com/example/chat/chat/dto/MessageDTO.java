@@ -1,5 +1,6 @@
 package com.example.chat.chat.dto;
 
+import com.example.chat.chat.model.MessageStatus;
 import lombok.*;
 
 import java.time.Instant;
@@ -16,7 +17,7 @@ public class MessageDTO {
     private String senderName;
     private String content;
     private String mediaUrl;
-    private String status;
+    private MessageStatus status;
     @Builder.Default
     private Boolean isDeleted = false;
     private Instant timestamp;

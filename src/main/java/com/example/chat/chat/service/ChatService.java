@@ -7,10 +7,13 @@ import com.example.chat.chat.dto.*;
 import com.example.chat.chat.model.Chat;
 import com.example.chat.chat.model.ChatMember;
 import com.example.chat.chat.model.Message;
+import com.example.chat.chat.model.MessageStatus;
 import com.example.chat.chat.repository.ChatMemberRepository;
 import com.example.chat.chat.repository.ChatRepository;
 import com.example.chat.chat.repository.MessageRepository;
+import com.example.chat.friendship.service.FriendshipService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -29,6 +32,8 @@ public class ChatService {
     private final ChatMemberRepository memberRepo;
     private final MessageRepository messageRepo;
     private final UserRepository userRepository; // from auth module
+    private final FriendshipService friendshipService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     private User getCurrentUser() {
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -83,20 +88,55 @@ public class ChatService {
     }
 
     public ChatDTO toChatDTO(Chat chat) {
-        // No more memberRepo call here! We use the internal 'members' set.
-        List<ChatMemberDTO> memberDTOS = chat.getMembers() == null ? Collections.emptyList() :
-                chat.getMembers().stream()
-                        .map(m -> {
-                            ChatMemberDTO md = new ChatMemberDTO();
-                            md.setUserId(m.getUserId());
-                            md.setRole(m.getRole());
-                            return md;
-                        }).collect(Collectors.toList());
+        User me = getCurrentUser();
+        String displayName = chat.getName();
+        String avatarUrl = null;
+        boolean readOnly = false;
+
+        // 1. Safe Member Mapping (Fixes the NullPointerException)
+        // We use an empty list if getMembers() is null
+        List<ChatMemberDTO> memberDTOS = (chat.getMembers() == null)
+                ? Collections.emptyList()
+                : chat.getMembers().stream()
+                .map(m -> {
+                    ChatMemberDTO md = new ChatMemberDTO();
+                    md.setUserId(m.getUserId());
+                    md.setRole(m.getRole());
+                    return md;
+                }).collect(Collectors.toList());
+
+        // 2. Logic for PRIVATE/DIRECT chats
+        if ("PRIVATE".equalsIgnoreCase(chat.getType()) || "DIRECT".equalsIgnoreCase(chat.getType())) {
+
+            // Ensure members exist before searching for the other user
+            if (chat.getMembers() != null) {
+                Long otherUserId = chat.getMembers().stream()
+                        .map(ChatMember::getUserId)
+                        .filter(id -> !id.equals(me.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (otherUserId != null) {
+                    Optional<User> otherUserOpt = userRepository.findById(otherUserId);
+                    User otherUser = otherUserOpt.get();
+                    displayName = (otherUser.getDisplayName() != null && !otherUser.getDisplayName().isEmpty())
+                            ? otherUser.getDisplayName()
+                            : otherUser.getUsername();
+                    avatarUrl = otherUser.getAvatarUrl();
+                    // Set readOnly if friendship is broken
+                    if (!friendshipService.areFriends(me.getId(), otherUserId)) {
+                        readOnly = true;
+                    }
+                }
+            }
+        }
 
         return ChatDTO.builder()
                 .id(chat.getId())
                 .type(chat.getType())
-                .name(chat.getName())
+                .name(displayName)
+                .avatarUrl(avatarUrl)
+                .isReadOnly(readOnly)
                 .createdAt(chat.getCreatedAt())
                 .createdBy(chat.getCreatedBy())
                 .members(memberDTOS)
@@ -160,7 +200,7 @@ public class ChatService {
                 .senderId(currentUser.getId()) // Use authenticated ID, not DTO ID
                 .content(dto.getContent())
                 .mediaUrl(dto.getMediaUrl())
-                .status("SENT") // Initial status is always SENT
+                .status(MessageStatus.SENT) // Initial status is always SENT
                 .isDeleted(false)
                 .timestamp(Instant.now())
                 .build();
@@ -188,7 +228,7 @@ public class ChatService {
                 .id(m.getId())
                 .chatId(m.getChatId())
                 .senderId(m.getSenderId())
-                .senderName(senderName) // 👈 This is the missing piece
+                .senderName(senderName)
                 .content(m.getContent())
                 .mediaUrl(m.getMediaUrl())
                 .status(m.getStatus())
@@ -197,43 +237,102 @@ public class ChatService {
                 .build();
     }
 
-
     @Transactional
     public ChatDTO getOrCreatePrivateChat(Long targetUserId) {
         User me = getCurrentUser();
 
-        // 1. Try to find an existing 1-on-1
         List<Chat> existing = chatRepo.findPrivateChatBetween(me.getId(), targetUserId);
-
         if (!existing.isEmpty()) {
             return toChatDTO(existing.get(0));
         }
 
-        // 2. If it doesn't exist, create a new 'DIRECT' chat
+        if (!friendshipService.areFriends(me.getId(), targetUserId)) {
+            throw new RuntimeException("You can only start chats with friends.");
+        }
+
         Chat chat = Chat.builder()
-                .type("DIRECT")
+                .type("PRIVATE")
                 .name("Direct Message")
                 .createdBy(me.getId())
                 .createdAt(Instant.now())
+                .members(new HashSet<>()) // Initialize here to be safe
                 .build();
 
         Chat saved = chatRepo.save(chat);
 
-        // 3. Add both users as members
-        saveMember(saved.getId(), me.getId(), "MEMBER");
-        saveMember(saved.getId(), targetUserId, "MEMBER");
+        // 🟢 Pass the object 'saved' instead of just 'saved.getId()'
+        saveMember(saved, me.getId(), "MEMBER");
+        saveMember(saved, targetUserId, "MEMBER");
 
+        // No re-fetch needed! toChatDTO will now see the members in 'saved'
         return toChatDTO(saved);
     }
 
+    @Transactional
+    public void markMessagesAsRead(Long chatId) {
+        User me = getCurrentUser();
+
+        // 1. Update all messages in this chat sent by others to 'READ'
+        List<Message> unreadMessages = messageRepo.findByChatIdAndSenderIdNotAndStatusNot(
+                chatId, me.getId(), MessageStatus.READ
+        );
+
+        for (Message msg : unreadMessages) {
+            msg.setStatus(MessageStatus.READ);
+        }
+
+        messageRepo.saveAll(unreadMessages);
+
+        // 2. 🟢 CRITICAL: Notify the SENDER via WebSocket so their ticks turn blue
+        // For each message, we could send a status update event
+        System.out.println("Check... READ Messages" + chatId.toString());
+        messagingTemplate.convertAndSend("/topic/chats/" + chatId + "/status",
+                new StatusUpdateDTO(chatId, me.getId(), MessageStatus.READ));
+    }
+
+    @Transactional
+    public ChatDTO createGroupChat(CreateGroupRequest request) {
+        User me = getCurrentUser();
+
+        if (request.getMemberIds() == null || request.getMemberIds().isEmpty()) {
+            throw new RuntimeException("You must select at least one friend.");
+        }
+
+        Chat chat = Chat.builder()
+                .type("GROUP")
+                .name(request.getName())
+                .createdBy(me.getId())
+                .createdAt(Instant.now())
+                .members(new HashSet<>())
+                .build();
+
+        Chat savedChat = chatRepo.save(chat);
+
+        // 🟢 Use the updated saveMember helper
+        saveMember(savedChat, me.getId(), "ADMIN");
+
+        for (Long friendId : request.getMemberIds()) {
+            saveMember(savedChat, friendId, "MEMBER");
+        }
+
+        return toChatDTO(savedChat);
+    }
+
     // Helper method to keep code clean
-    private void saveMember(Long chatId, Long userId, String role) {
+    private void saveMember(Chat chat, Long userId, String role) {
         ChatMember member = ChatMember.builder()
-                .chatId(chatId)
+                .chatId(chat.getId()) // Use the ID from the object
                 .userId(userId)
                 .role(role)
                 .build();
+
         memberRepo.save(member);
+
+        // Initialize the collection if it's null and add the member in-memory
+        if (chat.getMembers() == null) {
+            chat.setMembers(new HashSet<>());
+        }
+        chat.getMembers().add(member);
     }
 
 
