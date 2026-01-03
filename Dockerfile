@@ -1,22 +1,18 @@
-# --- Stage 1: Build ---
+# --- Stage 1: Build (Keep this the same) ---
 FROM maven:3.8.5-openjdk-17 AS build
 WORKDIR /app
-# Copy only the pom.xml first to cache dependencies
 COPY pom.xml .
 RUN mvn dependency:go-offline
-
-# Copy the source code and build the JAR
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# --- Stage 2: Runtime ---
-FROM openjdk:17-jdk-slim
+# --- Stage 2: Runtime (FIXED) ---
+# We use eclipse-temurin instead of the deprecated openjdk image
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-# Copy the JAR from the build stage
 COPY --from=build /app/target/*.jar app.jar
 
-# Standard port for Spring Boot
 EXPOSE 8080
 
-# Run the application with production flags
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Use the PORT variable for cloud compatibility
+ENTRYPOINT ["java", "-Dserver.port=${PORT:8080}", "-jar", "app.jar"]
