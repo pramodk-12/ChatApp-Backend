@@ -21,7 +21,7 @@ services:
 
   # --- Spring Boot Backend ---
   backend:
-    build: ./backend
+    build: .
     restart: always
     ports:
       - "8080:8080"
@@ -36,8 +36,8 @@ services:
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
       # This will be your Vercel URL once deployed
-      APP_FRONTEND_URL: ${APP_FRONTEND_URL:http://localhost:5173}
-      JWT_SECRET: ${JWT_SECRET:ad371630f2db899cf93b7e922f0b71f1}
+      APP_FRONTEND_URL: $${APP_FRONTEND_URL:http://localhost:5173}
+      JWT_SECRET: $${JWT_SECRET:ad371630f2db899cf93b7e922f0b71f1}
 
 volumes:
   mysql_data:
