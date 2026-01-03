@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  # --- MySQL Database ---
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: mypassword
+      MYSQL_DATABASE: chatdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # --- Redis (Message Broker & Presence) ---
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # --- Spring Boot Backend ---
+  backend:
+    build: ./backend
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+      - redis
+    environment:
+      # Use service names 'db' and 'redis' defined above
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/chatdb?useSSL=false&serverTimezone=Asia/Kolkata
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: mypassword
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      # This will be your Vercel URL once deployed
+      APP_FRONTEND_URL: ${APP_FRONTEND_URL:http://localhost:5173}
+      JWT_SECRET: ${JWT_SECRET:ad371630f2db899cf93b7e922f0b71f1}
+
+volumes:
+  mysql_data:

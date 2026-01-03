@@ -26,6 +26,13 @@ public class JwtFilter extends OncePerRequestFilter {
     private final UserRepository repository;
 
     @Override
+    protected boolean shouldNotFilter(@Nonnull HttpServletRequest request) throws ServletException {
+        String path = request.getServletPath();
+        // 🟢 Skip JWT filtering for WebSocket handshakes
+        return path.startsWith("/ws");
+    }
+
+    @Override
     protected void doFilterInternal(
             @Nonnull HttpServletRequest request,
             @Nonnull HttpServletResponse response,

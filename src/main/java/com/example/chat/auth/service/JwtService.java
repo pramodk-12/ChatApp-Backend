@@ -3,6 +3,7 @@ package com.example.chat.auth.service;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.io.Decoders;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
@@ -11,17 +12,19 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    // Fixed: Using the same secret, but we will decode it as BASE64URL
-    private final String SECRET_BASE64 = "gQ_t1xL7jWd-qJ8yH_vA2F4kP0zB9iYxR5uS6cO3mE8wV7uZgYbXcDaHeFiGjKlNmOqPrS0t";
+    @Value("${jwt.secret}")
+    private String secretKey;
 
-    private final long EXPIRATION_TIME = 1000 * 60 * 60 * 24; // 24 hours
+    // 🟢 You can also pull expiration from properties!
+    @Value("${jwt.expiration:86400000}")
+    private long expirationTime;
 
     /**
      * Retrieves the signing key using BASE64URL decoder to handle the '-' and '_' characters.
      */
     private SecretKey getSigningKey() {
         // Changed from Decoders.BASE64 to Decoders.BASE64URL
-        byte[] keyBytes = Decoders.BASE64URL.decode(SECRET_BASE64);
+        byte[] keyBytes = Decoders.BASE64URL.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
@@ -32,7 +35,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(username)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .expiration(new Date(System.currentTimeMillis() + expirationTime))
                 .signWith(getSigningKey()) // Algorithm is automatically detected (HS256)
                 .compact();
     }

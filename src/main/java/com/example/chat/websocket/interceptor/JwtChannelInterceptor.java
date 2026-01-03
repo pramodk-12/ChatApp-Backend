@@ -24,31 +24,39 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor =
-                MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        // Use wrap() for easier header access
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
-            System.out.println("WS CONNECT from user: " + accessor.getUser());
             String authHeader = accessor.getFirstNativeHeader("Authorization");
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-                throw new IllegalArgumentException("Missing or invalid Authorization header");
+                // In production, throwing an exception here closes the socket connection
+                throw new IllegalArgumentException("Missing Authorization header");
             }
 
             String token = authHeader.substring(7);
-            String username = jwtService.extractUsername(token);
 
-            if (username == null || !jwtService.isTokenValid(token, username)) {
-                throw new IllegalArgumentException("Invalid JWT token");
+            try {
+                String username = jwtService.extractUsername(token);
+
+                if (username != null && jwtService.isTokenValid(token, username)) {
+                    User user = userRepository.findByUsername(username)
+                            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+                    // 🟢 IMPORTANT: Create the Authentication object
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList());
+
+                    // 🟢 SET THE USER: This links the user to the WebSocket Session
+                    accessor.setUser(authentication);
+
+                    // Optional: Link to SecurityContext for this specific thread
+                    // SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Token validation failed: " + e.getMessage());
             }
-
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
-
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(user, null, Collections.emptyList());
-
-            accessor.setUser(authentication);
         }
 
         return message;
