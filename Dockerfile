@@ -1,18 +1,25 @@
-# --- Stage 1: Build (Keep this the same) ---
-FROM maven:3.8.5-openjdk-17 AS build
+# --- Stage 1: Build ---
+# Use Maven with Java 21
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
+
+# Copy pom.xml and download dependencies (better caching)
 COPY pom.xml .
 RUN mvn dependency:go-offline
+
+# Copy source and build
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# --- Stage 2: Runtime (FIXED) ---
-# We use eclipse-temurin instead of the deprecated openjdk image
-FROM eclipse-temurin:17-jre-alpine
+# --- Stage 2: Runtime ---
+# Use JRE 21 for the final image
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
+
+# Copy the generated JAR
 COPY --from=build /app/target/*.jar app.jar
 
 EXPOSE 8080
 
-# Use the PORT variable for cloud compatibility
+# Handle the PORT variable for cloud environments
 ENTRYPOINT ["java", "-Dserver.port=${PORT:8080}", "-jar", "app.jar"]
